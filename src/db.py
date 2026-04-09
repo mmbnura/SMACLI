@@ -69,7 +69,6 @@ CREATE TABLE IF NOT EXISTS app_meta (
 
 CREATE INDEX IF NOT EXISTS idx_stock_data_symbol_date ON stock_data(symbol, date);
 CREATE INDEX IF NOT EXISTS idx_analysis_symbol_timestamp ON analysis_results(symbol, timestamp);
-CREATE INDEX IF NOT EXISTS idx_analysis_run ON analysis_results(analysis_run_id);
 """
 
 
@@ -85,6 +84,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     columns = {row[1] for row in conn.execute("PRAGMA table_info(analysis_results)").fetchall()}
     if "analysis_run_id" not in columns:
         conn.execute("ALTER TABLE analysis_results ADD COLUMN analysis_run_id INTEGER")
+
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_analysis_run ON analysis_results(analysis_run_id)")
 
 
 @contextmanager
