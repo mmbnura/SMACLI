@@ -32,7 +32,7 @@ class AdvisorService:
 
         return self.repository.get_stock_history(symbol), self.repository.get_fundamentals(symbol)
 
-    def analyze_symbol(self, symbol: str) -> dict | None:
+    def analyze_symbol(self, symbol: str, run_id: int) -> dict | None:
         history, fundamentals = self.update_stock_cache(symbol)
         if history.empty:
             return None
@@ -44,6 +44,7 @@ class AdvisorService:
             return None
 
         result = {
+            "analysis_run_id": run_id,
             "symbol": symbol,
             "score": analysis.score,
             "recommendation": analysis.recommendation,
@@ -58,10 +59,11 @@ class AdvisorService:
         payload.update({"symbol": symbol, "price": analysis.technical.get("price")})
         return payload
 
-    def analyze_universe(self, stocks_df: pd.DataFrame) -> pd.DataFrame:
+    def analyze_universe(self, stocks_df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
+        run_id = self.repository.create_analysis_run()
         results = []
         for _, row in stocks_df.iterrows():
-            output = self.analyze_symbol(row["symbol"])
+            output = self.analyze_symbol(row["symbol"], run_id=run_id)
             if not output:
                 continue
             results.append(
@@ -81,7 +83,8 @@ class AdvisorService:
             )
 
         if not results:
-            return pd.DataFrame()
+            return pd.DataFrame(), run_id
 
         out = pd.DataFrame(results)
-        return out.sort_values(by=["Score", "Price"], ascending=[False, False]).reset_index(drop=True)
+        out = out.sort_values(by=["Score", "Price"], ascending=[False, False]).reset_index(drop=True)
+        return out, run_id

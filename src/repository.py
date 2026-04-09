@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Iterable
 
@@ -13,7 +14,9 @@ UTC = timezone.utc
 
 class StockRepository:
     def upsert_stocks_master(self, stocks_df: pd.DataFrame) -> None:
-        rows = stocks_df[["symbol", "name", "sector", "cap_category"]].dropna().to_dict("records")
+        frame = stocks_df.copy()
+        frame["cap_category"] = frame["cap_category"].map(self._normalize_cap_category)
+        rows = frame[["symbol", "name", "sector", "cap_category"]].dropna().to_dict("records")
         if not rows:
             return
 
@@ -29,6 +32,16 @@ class StockRepository:
                 """,
                 rows,
             )
+
+    def _normalize_cap_category(self, val: str) -> str:
+        text = (val or "").strip().lower()
+        if "large" in text:
+            return "Large"
+        if "mid" in text or "medium" in text:
+            return "Medium"
+        if "small" in text:
+            return "Small"
+        return "Medium"
 
     def get_stocks(self, sectors: list[str] | None = None, cap: str | None = None) -> pd.DataFrame:
         query = "SELECT symbol, name, sector, cap_category FROM stocks_master WHERE 1=1"
@@ -53,13 +66,6 @@ class StockRepository:
                 "SELECT DISTINCT sector FROM stocks_master ORDER BY sector", conn
             )
             return df["sector"].dropna().tolist()
-
-    def get_all_caps(self) -> list[str]:
-        with get_conn() as conn:
-            df = pd.read_sql_query(
-                "SELECT DISTINCT cap_category FROM stocks_master ORDER BY cap_category", conn
-            )
-            return df["cap_category"].dropna().tolist()
 
     def get_meta(self, key: str) -> str | None:
         with get_conn() as conn:
@@ -181,34 +187,56 @@ class StockRepository:
             ).fetchone()
             return dict(row) if row else {}
 
+    def create_analysis_run(self) -> int:
+        with get_conn() as conn:
+            cur = conn.execute("INSERT INTO analysis_runs DEFAULT VALUES")
+            return int(cur.lastrowid)
+
     def save_analysis_result(self, result: dict) -> None:
         with get_conn() as conn:
             conn.execute(
                 """
-                INSERT INTO analysis_results(symbol, score, recommendation, confidence, notes, technical_snapshot, fundamental_snapshot)
-                VALUES (:symbol, :score, :recommendation, :confidence, :notes, :technical_snapshot, :fundamental_snapshot)
+                INSERT INTO analysis_results(analysis_run_id, symbol, score, recommendation, confidence, notes, technical_snapshot, fundamental_snapshot)
+                VALUES (:analysis_run_id, :symbol, :score, :recommendation, :confidence, :notes, :technical_snapshot, :fundamental_snapshot)
                 """,
                 result,
             )
 
-    def get_latest_analysis(self, symbols: Iterable[str]) -> pd.DataFrame:
-        symbols = list(symbols)
-        if not symbols:
-            return pd.DataFrame()
-
-        placeholders = ",".join(["?"] * len(symbols))
-        query = f"""
-        SELECT ar1.*
-        FROM analysis_results ar1
-        JOIN (
-            SELECT symbol, MAX(timestamp) AS max_ts
-            FROM analysis_results
-            WHERE symbol IN ({placeholders})
-            GROUP BY symbol
-        ) ar2 ON ar1.symbol = ar2.symbol AND ar1.timestamp = ar2.max_ts
-        """
+    def list_analysis_runs(self, limit: int = 50) -> pd.DataFrame:
         with get_conn() as conn:
-            return pd.read_sql_query(query, conn, params=symbols)
+            return pd.read_sql_query(
+                """
+                SELECT r.id as run_id, r.run_at, COUNT(ar.id) as stock_count
+                FROM analysis_runs r
+                LEFT JOIN analysis_results ar ON ar.analysis_run_id = r.id
+                GROUP BY r.id, r.run_at
+                ORDER BY r.run_at DESC
+                LIMIT ?
+                """,
+                conn,
+                params=(limit,),
+            )
+
+    def load_analysis_run(self, run_id: int) -> pd.DataFrame:
+        with get_conn() as conn:
+            df = pd.read_sql_query(
+                """
+                SELECT ar.symbol, sm.name, sm.sector, sm.cap_category, ar.score, ar.recommendation,
+                       ar.confidence, ar.notes, ar.technical_snapshot, ar.fundamental_snapshot, ar.timestamp
+                FROM analysis_results ar
+                JOIN stocks_master sm ON sm.symbol = ar.symbol
+                WHERE ar.analysis_run_id = ?
+                ORDER BY ar.score DESC, ar.symbol
+                """,
+                conn,
+                params=(run_id,),
+            )
+        if df.empty:
+            return df
+        df["technical"] = df["technical_snapshot"].apply(lambda x: json.loads(x or "{}"))
+        df["fundamentals"] = df["fundamental_snapshot"].apply(lambda x: json.loads(x or "{}"))
+        df["Price"] = df["technical"].apply(lambda x: round(float(x.get("price", 0) or 0), 2))
+        return df
 
     def get_last_update_timestamp(self) -> str | None:
         with get_conn() as conn:
