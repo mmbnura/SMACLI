@@ -12,18 +12,34 @@ from src.config import HISTORY_INTERVAL, HISTORY_PERIOD, MASTER_CSV_PATH, NIFTY5
 class MasterStockLoader:
     REQUIRED_COLUMNS = ["symbol", "name", "sector", "cap_category"]
 
-    def load(self) -> pd.DataFrame:
+    def load(self, prefer_remote: bool = True) -> pd.DataFrame:
+        if prefer_remote:
+            try:
+                remote = self._download_from_nse()
+                MASTER_CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
+                remote.to_csv(MASTER_CSV_PATH, index=False)
+                return remote
+            except Exception:
+                pass
+
         if MASTER_CSV_PATH.exists():
             raw = pd.read_csv(MASTER_CSV_PATH)
             return self._normalize(raw)
 
-        response = requests.get(NIFTY500_CSV_URL, timeout=20)
-        response.raise_for_status()
-        raw = pd.read_csv(StringIO(response.text))
-        normalized = self._normalize(raw)
-        MASTER_CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
-        normalized.to_csv(MASTER_CSV_PATH, index=False)
-        return normalized
+        raise RuntimeError("Unable to load NIFTY 500 master list from both NSE and local CSV")
+
+    def _download_from_nse(self) -> pd.DataFrame:
+        headers = {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/csv,application/csv,*/*",
+            "Referer": "https://www.nseindia.com/",
+        }
+        with requests.Session() as session:
+            session.get("https://www.nseindia.com", headers=headers, timeout=20)
+            response = session.get(NIFTY500_CSV_URL, headers=headers, timeout=20)
+            response.raise_for_status()
+            raw = pd.read_csv(StringIO(response.text))
+            return self._normalize(raw)
 
     def _normalize(self, df: pd.DataFrame) -> pd.DataFrame:
         mapper = {

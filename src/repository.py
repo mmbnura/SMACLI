@@ -61,6 +61,24 @@ class StockRepository:
             )
             return df["cap_category"].dropna().tolist()
 
+    def get_meta(self, key: str) -> str | None:
+        with get_conn() as conn:
+            row = conn.execute("SELECT value FROM app_meta WHERE key = ?", (key,)).fetchone()
+            return row["value"] if row else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        with get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO app_meta(key, value)
+                VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    value = excluded.value,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (key, value),
+            )
+
     def should_refresh_price(self, symbol: str) -> bool:
         cutoff = datetime.now(UTC) - timedelta(hours=PRICE_REFRESH_HOURS)
         with get_conn() as conn:

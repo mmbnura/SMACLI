@@ -66,5 +66,5 @@ streamlit run app.py
 ## Notes
 
 - Yahoo Finance symbols are resolved as `{SYMBOL}.NS`.
-- If `data/nifty500_master.csv` is absent, the app attempts to download NSE list from configured URL.
+- App dynamically refreshes the NIFTY 500 master list from NSE (every 24 hours) and falls back to local `data/nifty500_master.csv` if NSE is unavailable.
 - This is a local, educational advisor and not investment advice.
