@@ -61,9 +61,10 @@ def main() -> None:
     with col4:
         run_clicked = st.button("Analyze", type="primary", use_container_width=True)
 
-    if run_clicked:
-        universe = repo.get_stocks(sectors=selected_sectors, cap=selected_cap)
+    universe = repo.get_stocks(sectors=selected_sectors, cap=selected_cap)
+    st.caption(f"Stocks matching current filters: **{len(universe)}**")
 
+    if run_clicked:
         if universe.empty:
             st.warning("No stocks found for selected filters.")
             return
