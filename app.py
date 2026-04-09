@@ -104,7 +104,11 @@ def main() -> None:
     if last_updated:
         st.caption(f"Last updated: {last_updated} UTC")
 
-    styled = show_df[display_cols].style.applymap(style_recommendation, subset=["Recommendation"])
+    styler = show_df[display_cols].style
+    if hasattr(styler, "map"):
+        styled = styler.map(style_recommendation, subset=["Recommendation"])
+    else:
+        styled = styler.applymap(style_recommendation, subset=["Recommendation"])
 
     event = st.dataframe(
         styled,
