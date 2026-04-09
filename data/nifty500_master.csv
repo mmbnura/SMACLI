@@ -1,0 +1,21 @@
+symbol,name,sector,cap_category
+RELIANCE,Reliance Industries,Energy,Large Cap
+TCS,Tata Consultancy Services,IT,Large Cap
+HDFCBANK,HDFC Bank,Financial Services,Large Cap
+INFY,Infosys,IT,Large Cap
+ICICIBANK,ICICI Bank,Financial Services,Large Cap
+BHARTIARTL,Bharti Airtel,Telecom,Large Cap
+LT,Larsen & Toubro,Construction,Large Cap
+ASIANPAINT,Asian Paints,Chemicals,Large Cap
+SUNPHARMA,Sun Pharmaceutical,Healthcare,Large Cap
+TATAMOTORS,Tata Motors,Automobile,Large Cap
+BAJFINANCE,Bajaj Finance,Financial Services,Large Cap
+ADANIENT,Adani Enterprises,Industrials,Large Cap
+WIPRO,Wipro,IT,Large Cap
+HCLTECH,HCL Technologies,IT,Large Cap
+DIVISLAB,Divi's Laboratories,Healthcare,Large Cap
+PIDILITIND,Pidilite Industries,Chemicals,Mid Cap
+MUTHOOTFIN,Muthoot Finance,Financial Services,Mid Cap
+DABUR,Dabur India,FMCG,Large Cap
+INDIGO,InterGlobe Aviation,Services,Mid Cap
+COFORGE,Coforge,IT,Mid Cap
