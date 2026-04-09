@@ -12,6 +12,59 @@ from src.repository import StockRepository
 
 st.set_page_config(page_title="Personal Stock Advisor (NSE 500)", layout="wide")
 
+# Application version
+APP_VERSION = "0.5"
+
+# Custom CSS for blueish theme and compact layout
+st.markdown("""
+<style>
+    .main {
+        background-color: #f8f9fa;
+    }
+    .stButton>button, .stDownloadButton>button {
+        background-color: #1f77b4 !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 4px !important;
+        font-weight: 500 !important;
+        transition: background-color 0.3s !important;
+        height: 38px !important;
+    }
+    .stButton>button:hover, .stDownloadButton>button:hover {
+        background-color: #1565c0 !important;
+    }
+    .stButton>button:disabled {
+        background-color: #b0bec5 !important;
+        color: #78909c !important;
+    }
+    .stRadio > div {
+        background-color: #e3f2fd !important;
+        padding: 8px !important;
+        border-radius: 4px !important;
+    }
+    .stSelectbox, .stMultiselect {
+        background-color: #f5f5f5 !important;
+    }
+    .stCheckbox > div > div {
+        background-color: #e3f2fd !important;
+    }
+    div[data-testid="stDataFrame"] {
+        border: 1px solid #1f77b4 !important;
+        border-radius: 4px !important;
+    }
+    .stCaption {
+        color: #424242 !important;
+    }
+    .stSubheader {
+        color: #1976d2 !important;
+        font-weight: 600 !important;
+    }
+    .stTitle {
+        color: #0d47a1 !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 
 @st.cache_resource
 def init_app() -> tuple[StockRepository, AdvisorService]:
@@ -56,7 +109,7 @@ def show_deep_analysis(repo: StockRepository) -> None:
 
     top_left, top_right = st.columns([1, 5])
     with top_left:
-        if st.button("← Back", use_container_width=True):
+        if st.button("← Back", type="primary", use_container_width=True):
             st.session_state["view"] = "home"
             st.rerun()
 
@@ -99,46 +152,88 @@ def main() -> None:
         show_deep_analysis(repo)
         return
 
-    sectors = repo.get_all_sectors()
+    # Index Selection - Compact Layout
+    st.subheader("Select Index")
+    index_row = st.columns([3, 1, 1])
+    with index_row[0]:
+        selected_index = st.radio(
+            "Choose Index",
+            options=["Nifty 500", "Nifty Microcap 250"],
+            index=0,
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+    
+    with index_row[1]:
+        if st.button("🔄 Refresh", type="primary", use_container_width=True, help="Repull index data from NSE server"):
+            with st.spinner("Refreshing data from NSE server..."):
+                st.cache_resource.clear()
+                bootstrap_master_data(force_refresh=True)
+                st.success("✅ Data refreshed successfully!")
+                st.rerun()
+    
+    with index_row[2]:
+        if st.button("↺ Reset", type="primary", use_container_width=True, help="Reset all filters to initial state"):
+            st.session_state.clear()
+            st.rerun()
+    
+    # Map display name to database filter
+    index_filter = "nifty500" if selected_index == "Nifty 500" else "nifty_microcap250"
+    
+    st.caption(f"Analyzing stocks from **{selected_index}** index")
+    st.divider()
 
-    col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
-    with col1:
-        selected_sectors = st.multiselect("Sector", options=sectors, default=[])
-    with col2:
-        selected_cap = st.selectbox("Market Cap", options=["All", "Large", "Medium", "Small"], index=0)
-    with col3:
-        only_buy = st.checkbox("Only BUY", value=False)
-    with col4:
+    sectors = repo.get_all_sectors(index_type=index_filter)
+    
+    # Check if data is available for selected index
+    stocks_available = repo.get_stocks(index_type=index_filter)
+    if stocks_available.empty:
+        st.warning(f"❌ No stocks found for **{selected_index}** index. Please ensure the data is available or manually add a CSV file at `data/nifty_microcap250_master.csv` for Nifty Microcap 250.")
+
+    # Filters - Compact Layout
+    filter_row = st.columns([3, 2, 1, 1])
+    with filter_row[0]:
+        selected_sectors = st.multiselect("Sector", options=sectors, default=[], label_visibility="collapsed")
+    with filter_row[1]:
+        selected_cap = st.selectbox("Market Cap", options=["All", "Large", "Medium", "Small"], index=0, label_visibility="collapsed")
+    with filter_row[2]:
+        only_buy = st.checkbox("Only BUY", value=False, label_visibility="collapsed")
+    with filter_row[3]:
         run_clicked = st.button("Analyze", type="primary", use_container_width=True)
 
-    universe = repo.get_stocks(sectors=selected_sectors, cap=selected_cap)
+    universe = repo.get_stocks(sectors=selected_sectors, cap=selected_cap, index_type=index_filter)
     st.caption(f"Stocks matching current filters: **{len(universe)}**")
 
     runs_df = repo.list_analysis_runs(limit=100)
+    # Previous Runs - Compact Layout
     if not runs_df.empty:
-        run_options = runs_df.to_dict("records")
-        selected_run = st.selectbox(
-            "Load Previous Analysis",
-            options=run_options,
-            format_func=lambda x: format_run_label(pd.Series(x)),
-            index=0,
-        )
-        if st.button("Load Selected Run"):
-            loaded = repo.load_analysis_run(int(selected_run["run_id"]))
-            if not loaded.empty:
-                st.session_state["analysis_df"] = loaded.rename(
-                    columns={
-                        "symbol": "Stock",
-                        "name": "Name",
-                        "sector": "Sector",
-                        "cap_category": "Cap",
-                        "score": "Score",
-                        "recommendation": "Recommendation",
-                        "confidence": "Confidence",
-                        "notes": "Notes",
-                    }
-                )
-                st.success("Loaded previous analysis run.")
+        run_row = st.columns([4, 1])
+        with run_row[0]:
+            run_options = runs_df.to_dict("records")
+            selected_run = st.selectbox(
+                "Load Previous Analysis",
+                options=run_options,
+                format_func=lambda x: format_run_label(pd.Series(x)),
+                index=0,
+                label_visibility="collapsed"
+            )
+        with run_row[1]:
+            if st.button("Load Run", type="primary", use_container_width=True):
+                loaded = repo.load_analysis_run(int(selected_run["run_id"]))
+                if not loaded.empty:
+                    st.session_state["analysis_df"] = loaded.rename(
+                        columns={
+                            "symbol": "Stock",
+                            "name": "Name",
+                            "sector": "Sector",
+                            "cap_category": "Cap",
+                            "score": "Score",
+                            "recommendation": "Recommendation",
+                            "confidence": "Confidence",
+                            "notes": "Notes",
+                        }
+                    )
+                    st.success("Loaded previous analysis run.")
 
     if run_clicked:
         if universe.empty:
@@ -189,48 +284,69 @@ def main() -> None:
     else:
         styled = styler.applymap(style_recommendation, subset=["Recommendation"])
 
-    st.caption("Tip: Double-click the same row quickly to open Deep Analysis.")
+    st.caption("Tip: Check the checkbox to select a stock.")
+    
     event = st.dataframe(
         styled,
         use_container_width=True,
         hide_index=True,
         on_select="rerun",
-        selection_mode="single-row",
+        selection_mode="multi-row",
     )
 
+    # Store selected row index
+    selected_idx = None
     if event and event.selection and event.selection.rows:
-        idx = event.selection.rows[0]
-        row = show_df.iloc[idx].to_dict()
-        symbol = row["Stock"]
-        now = time.time()
-        last_symbol = st.session_state.get("last_clicked_symbol")
-        last_time = st.session_state.get("last_clicked_time", 0.0)
+        selected_idx = event.selection.rows[0]
 
-        if symbol == last_symbol and (now - last_time) < 1.2:
-            st.session_state["detail_row"] = row
-            st.session_state["view"] = "detail"
-            st.rerun()
-
-        st.session_state["last_clicked_symbol"] = symbol
-        st.session_state["last_clicked_time"] = now
-
-    export_col1, export_col2 = st.columns(2)
-    with export_col1:
+    # Action Buttons - Compact Layout
+    action_row = st.columns([1.5, 0.5, 1, 1])
+    
+    with action_row[0]:
+        if selected_idx is not None:
+            if st.button("🔍 Deep Dive", use_container_width=True, type="primary"):
+                row = show_df.iloc[selected_idx].to_dict()
+                st.session_state["detail_row"] = row
+                st.session_state["view"] = "detail"
+                st.rerun()
+        else:
+            st.button("🔍 Deep Dive", use_container_width=True, disabled=True)
+    
+    with action_row[1]:
+        st.write("")  # Spacer
+    
+    with action_row[2]:
         st.download_button(
-            "Export CSV",
+            "📄 CSV",
             data=export_bytes(show_df[display_cols], kind="csv"),
             file_name="nse500_analysis.csv",
             mime="text/csv",
             use_container_width=True,
         )
-    with export_col2:
+    
+    with action_row[3]:
         st.download_button(
-            "Export Excel",
+            "📊 Excel",
             data=export_bytes(show_df[display_cols], kind="excel"),
             file_name="nse500_analysis.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
+
+    # Footer
+    st.divider()
+    footer_col1, footer_col2, footer_col3 = st.columns([1, 1, 1])
+    
+    with footer_col1:
+        st.caption(f"**Version:** {APP_VERSION}")
+    
+    with footer_col2:
+        last_updated = repo.get_last_update_timestamp()
+        if last_updated:
+            st.caption(f"**Data Updated:** {last_updated}")
+    
+    with footer_col3:
+        st.caption("© 2026 Personal Stock Advisor")
 
 
 if __name__ == "__main__":

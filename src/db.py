@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS stocks_master (
     name TEXT NOT NULL,
     sector TEXT NOT NULL,
     cap_category TEXT NOT NULL,
+    index_type TEXT DEFAULT 'nifty500',
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -81,11 +82,17 @@ def init_db() -> None:
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
+    # Add analysis_run_id if missing
     columns = {row[1] for row in conn.execute("PRAGMA table_info(analysis_results)").fetchall()}
     if "analysis_run_id" not in columns:
         conn.execute("ALTER TABLE analysis_results ADD COLUMN analysis_run_id INTEGER")
 
     conn.execute("CREATE INDEX IF NOT EXISTS idx_analysis_run ON analysis_results(analysis_run_id)")
+    
+    # Add index_type to stocks_master if missing
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(stocks_master)").fetchall()}
+    if "index_type" not in columns:
+        conn.execute("ALTER TABLE stocks_master ADD COLUMN index_type TEXT DEFAULT 'nifty500'")
 
 
 @contextmanager

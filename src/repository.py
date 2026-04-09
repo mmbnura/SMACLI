@@ -13,22 +13,24 @@ UTC = timezone.utc
 
 
 class StockRepository:
-    def upsert_stocks_master(self, stocks_df: pd.DataFrame) -> None:
+    def upsert_stocks_master(self, stocks_df: pd.DataFrame, index_type: str = "nifty500") -> None:
         frame = stocks_df.copy()
         frame["cap_category"] = frame["cap_category"].map(self._normalize_cap_category)
-        rows = frame[["symbol", "name", "sector", "cap_category"]].dropna().to_dict("records")
+        frame["index_type"] = index_type
+        rows = frame[["symbol", "name", "sector", "cap_category", "index_type"]].dropna().to_dict("records")
         if not rows:
             return
 
         with get_conn() as conn:
             conn.executemany(
                 """
-                INSERT INTO stocks_master(symbol, name, sector, cap_category)
-                VALUES (:symbol, :name, :sector, :cap_category)
+                INSERT INTO stocks_master(symbol, name, sector, cap_category, index_type)
+                VALUES (:symbol, :name, :sector, :cap_category, :index_type)
                 ON CONFLICT(symbol) DO UPDATE SET
                     name = excluded.name,
                     sector = excluded.sector,
-                    cap_category = excluded.cap_category
+                    cap_category = excluded.cap_category,
+                    index_type = excluded.index_type
                 """,
                 rows,
             )
@@ -43,9 +45,9 @@ class StockRepository:
             return "Small"
         return "Medium"
 
-    def get_stocks(self, sectors: list[str] | None = None, cap: str | None = None) -> pd.DataFrame:
-        query = "SELECT symbol, name, sector, cap_category FROM stocks_master WHERE 1=1"
-        params: list[str] = []
+    def get_stocks(self, sectors: list[str] | None = None, cap: str | None = None, index_type: str = "nifty500") -> pd.DataFrame:
+        query = "SELECT symbol, name, sector, cap_category FROM stocks_master WHERE index_type = ?"
+        params: list = [index_type]
 
         if sectors:
             placeholders = ",".join(["?"] * len(sectors))
@@ -60,10 +62,12 @@ class StockRepository:
         with get_conn() as conn:
             return pd.read_sql_query(query, conn, params=params)
 
-    def get_all_sectors(self) -> list[str]:
+    def get_all_sectors(self, index_type: str = "nifty500") -> list[str]:
         with get_conn() as conn:
             df = pd.read_sql_query(
-                "SELECT DISTINCT sector FROM stocks_master ORDER BY sector", conn
+                "SELECT DISTINCT sector FROM stocks_master WHERE index_type = ? ORDER BY sector",
+                conn,
+                params=[index_type]
             )
             return df["sector"].dropna().tolist()
 
